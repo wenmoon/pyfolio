@@ -10,7 +10,7 @@ def is_bitcoin(token_id):
     return token_id.lower() == 'btc'
 
 
-class API: 
+class API(object):
     endpoint_token = 'https://api.coinmarketcap.com/v1/ticker/%s/?convert=%s'
     endpoint_mcap = 'https://api.coinmarketcap.com/v1/global/'
 
@@ -37,7 +37,7 @@ class API:
         return Portfolio(tokens)
 
 
-class Token:
+class Token(object):
     def __init__(self, name, symbol, price, price_btc, balance, rank, pct_1h, pct_24h, pct_7d):
         self.name = name
         self.symbol = symbol
@@ -59,7 +59,7 @@ class Token:
             return [self.rank, self.name_str, self.balance, self.price, self.value, self.pct_1h, self.pct_24h, self.pct_7d]
 
 
-class Portfolio:
+class Portfolio(object):
     def __init__(self, tokens):
         self.tokens = tokens
         self.value = 0
@@ -69,11 +69,12 @@ class Portfolio:
             self.value_btc += token.value_btc
 
 
-def build_table(currency, sort_by, decimals, reverse, tokens):
+def build_table(percents, currency, sort_by, decimals, reverse, portfolio):
     # table headers
     headers = {
         'rank': 'Rank #',
         'coin': 'Coin/token',
+        'percents': 'Percents',
         'amount': 'Amount',
         'price': 'Price (%s)' % currency.upper(),
         'value': 'Value (%s)' % currency.upper(),
@@ -87,6 +88,7 @@ def build_table(currency, sort_by, decimals, reverse, tokens):
     table.field_names = [
         headers['rank'], 
         headers['coin'], 
+        headers['percents'], 
         headers['amount'], 
         headers['price'],
         headers['value'], 
@@ -94,11 +96,19 @@ def build_table(currency, sort_by, decimals, reverse, tokens):
         headers['pct_day'], 
         headers['pct_week']
     ]
+
+    if percents:
+        # remove amount and value
+        table.field_names.remove(headers['amount'])
+        table.field_names.remove(headers['value'])
+    else:
+        table.align[headers['amount']]  = 'r'
+        table.align[headers['value']] = 'r'
+
     table.align[headers['rank']]  = 'r'
     table.align[headers['coin']]  = 'l'
-    table.align[headers['amount']]  = 'r'
+    table.align[headers['percents']]  = 'r'
     table.align[headers['price']] = 'r'
-    table.align[headers['value']] = 'r'
     table.align[headers['pct']] = 'r'
     table.align[headers['pct_day']] = 'r'
     table.align[headers['pct_week']] = 'r'
@@ -107,18 +117,28 @@ def build_table(currency, sort_by, decimals, reverse, tokens):
     table.reversesort = not reverse
     
     # build table
-    for token in tokens:
-        table.add_row(token.as_row())
+    for token in portfolio.tokens:
+        row = token.as_row()
+
+        # add percents
+        row.insert(2, token.value * 100 / portfolio.value)
+
+        # remove amount/value from rows
+        if percents:
+            del row[2]
+            del row[4]
+        table.add_row(row)
 
     return table
 
 
 # Main application entry point
 def main():
-    sort_by = ['value', 'price', 'amount', 'coin', 'rank', 'pct', 'pct_day', 'pct_week']
+    sort_by = ['percents', 'value', 'price', 'amount', 'coin', 'rank', 'pct', 'pct_day', 'pct_week']
     parser = argparse.ArgumentParser()
     parser.add_argument('-s', '--sort-by', help="sort by: %s" % ', '.join(sorted(sort_by)), default='value')
     parser.add_argument('-r', '--reverse', help="reverse sort, by lowest value first", action='store_true', default=False)
+    parser.add_argument('-p', '--percents', help="show percents only (hide values)", action='store_true', default=False)
     parser.add_argument('-d', '--decimals', help="decimals for USD values", default=2)
     parser.add_argument('-c', '--currency', help="currency to use (default: USD)", default='USD')
     parser.add_argument('portfolio', help="portfolio file (in JSON)", action='store', metavar='PORTFOLIO')
@@ -140,9 +160,15 @@ def main():
     with open(args.portfolio, 'r') as file:
         portfolio_config = json.load(file)
     portfolio = api.get_portfolio(portfolio_config, args.currency.lower())
-   
+
+    # Replace default sort_by if -p/--percents
+    if args.sort_by == 'value' and args.percents:
+        args.sort_by = 'percents'
+
     # Build the table
-    table = build_table(args.currency, args.sort_by, args.decimals, args.reverse, portfolio.tokens)
+    table = build_table(
+        args.percents, args.currency, args.sort_by, args.decimals, args.reverse, portfolio
+    )
 
     # Print output
     print('Total mcap: $%d' % api.get_mcap())
