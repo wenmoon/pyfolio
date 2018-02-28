@@ -10,65 +10,6 @@ def is_bitcoin(token_id):
     return token_id.lower() == 'btc'
 
 
-class API(object):
-    endpoint_token = 'https://api.coinmarketcap.com/v1/ticker/%s/?convert=%s'
-    endpoint_mcap = 'https://api.coinmarketcap.com/v1/global/'
-
-    def get_mcap(self):
-        return requests.get(self.endpoint_mcap).json()['total_market_cap_usd']
-
-    def get_portfolio(self, portfolio_config, currency): 
-        tokens = []
-        # get stats for each coin
-        for item in portfolio_config:
-            name = item[0]
-            balance = item[1]
-            r_token = requests.get(self.endpoint_token % (name, currency)).json()[0]
-            name = r_token['name']
-            symbol = r_token['symbol']
-            rank = r_token['rank']
-            price = float(r_token['price_%s' % currency])
-            price_btc = float(r_token['price_btc'])
-            pct_1h = float(r_token['percent_change_1h'])
-            pct_24h = float(r_token['percent_change_24h'])
-            pct_7d = float(r_token['percent_change_7d'])
-            token = Token(name, symbol, price, price_btc, balance, rank, pct_1h, pct_24h, pct_7d)
-            tokens.append(token)
-        return Portfolio(tokens)
-
-
-class Token(object):
-    def __init__(self, name, symbol, price, price_btc, balance, rank, pct_1h, pct_24h, pct_7d):
-        self.name = name
-        self.symbol = symbol
-        self.name_str = '%s (%s)' % (name, symbol)
-        self.price = price
-        self.price_btc = price_btc
-        self.balance = balance
-        self.value = price * balance
-        self.value_btc = price_btc * balance
-        self.rank = rank
-        self.pct_1h = pct_1h
-        self.pct_24h = pct_24h
-        self.pct_7d = pct_7d
-
-    def as_row(self):
-        if is_bitcoin(self.symbol):
-            return [self.rank, self.name_str, self.balance, self.price_btc, self.value_btc, self.pct_1h, self.pct_24h, self.pct_7d]
-        else:
-            return [self.rank, self.name_str, self.balance, self.price, self.value, self.pct_1h, self.pct_24h, self.pct_7d]
-
-
-class Portfolio(object):
-    def __init__(self, tokens):
-        self.tokens = tokens
-        self.value = 0
-        self.value_btc = 0
-        for token in tokens:
-            self.value += token.value
-            self.value_btc += token.value_btc
-
-
 def build_table(percents, currency, sort_by, decimals, reverse, portfolio):
     # table headers
     headers = {
@@ -130,6 +71,62 @@ def build_table(percents, currency, sort_by, decimals, reverse, portfolio):
         table.add_row(row)
 
     return table
+
+
+class API(object):
+    endpoint_token = 'https://api.coinmarketcap.com/v1/ticker/%s/?convert=%s'
+    endpoint_mcap = 'https://api.coinmarketcap.com/v1/global/'
+
+    def get_mcap(self):
+        return requests.get(self.endpoint_mcap).json()['total_market_cap_usd']
+
+    def get_portfolio(self, portfolio_config, currency): 
+        tokens = []
+        # get stats for each coin
+        for item in portfolio_config:
+            name = item[0]
+            balance = item[1]
+            r_token = requests.get(self.endpoint_token % (name, currency)).json()[0]
+            name = r_token['name']
+            symbol = r_token['symbol']
+            rank = r_token['rank']
+            price = float(r_token['price_%s' % currency])
+            price_btc = float(r_token['price_btc'])
+            pct_1h = float(r_token['percent_change_1h'])
+            pct_24h = float(r_token['percent_change_24h'])
+            pct_7d = float(r_token['percent_change_7d'])
+            token = Token(name, symbol, price, price_btc, balance, rank, pct_1h, pct_24h, pct_7d)
+            tokens.append(token)
+        return Portfolio(tokens)
+
+
+class Token(object):
+    def __init__(self, name, symbol, price, price_btc, balance, rank, pct_1h, pct_24h, pct_7d):
+        self.name = name
+        self.symbol = symbol
+        self.name_str = '%s (%s)' % (name, symbol)
+        self.price = price
+        self.price_btc = price_btc
+        self.balance = balance
+        self.value = price * balance
+        self.value_btc = price_btc * balance
+        self.rank = rank
+        self.pct_1h = pct_1h
+        self.pct_24h = pct_24h
+        self.pct_7d = pct_7d
+
+    def as_row(self):
+        return [self.rank, self.name_str, self.balance, self.price, self.value, self.pct_1h, self.pct_24h, self.pct_7d]
+
+
+class Portfolio(object):
+    def __init__(self, tokens):
+        self.tokens = tokens
+        self.value = 0
+        self.value_btc = 0
+        for token in tokens:
+            self.value += token.value
+            self.value_btc += token.value_btc
 
 
 # Main application entry point
