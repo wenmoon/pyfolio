@@ -4,10 +4,23 @@ import prettytable
 import sys
 import argparse
 import json
+import math
 
 
 def is_bitcoin(token_id):
     return token_id.lower() == 'btc'
+
+
+def large_number(n, short=False):
+    """ Return human readable large numbers. """
+    millnames = ['','k','m','bn','tn']
+    try:
+        n = float(n)
+        millidx = max(0,min(len(millnames)-1,
+        int(math.floor(0 if n == 0 else math.log10(abs(n))/3))))
+        return '{:.0f}{}'.format(n / 10**(3 * millidx), millnames[millidx])
+    except TypeError:
+        return '?'
 
 
 def build_table(percents, currency, sort_by, decimals, reverse, portfolio):
@@ -19,6 +32,7 @@ def build_table(percents, currency, sort_by, decimals, reverse, portfolio):
         'amount': 'Amount',
         'price': 'Price (%s)' % currency.upper(),
         'value': 'Value (%s)' % currency.upper(),
+        'volume': '24h vol',
         'pct': '% 1h',
         'pct_day': '% day',
         'pct_week': '% week',
@@ -33,6 +47,7 @@ def build_table(percents, currency, sort_by, decimals, reverse, portfolio):
         headers['amount'], 
         headers['price'],
         headers['value'], 
+        headers['volume'], 
         headers['pct'], 
         headers['pct_day'], 
         headers['pct_week']
@@ -50,6 +65,7 @@ def build_table(percents, currency, sort_by, decimals, reverse, portfolio):
     table.align[headers['coin']]  = 'l'
     table.align[headers['percents']]  = 'r'
     table.align[headers['price']] = 'r'
+    table.align[headers['volume']] = 'r'
     table.align[headers['pct']] = 'r'
     table.align[headers['pct_day']] = 'r'
     table.align[headers['pct_week']] = 'r'
@@ -92,16 +108,17 @@ class API(object):
             rank = r_token['rank']
             price = float(r_token['price_%s' % currency])
             price_btc = float(r_token['price_btc'])
+            volume = large_number(float(r_token['24h_volume_usd']))
             pct_1h = float(r_token['percent_change_1h'])
             pct_24h = float(r_token['percent_change_24h'])
             pct_7d = float(r_token['percent_change_7d'])
-            token = Token(name, symbol, price, price_btc, balance, rank, pct_1h, pct_24h, pct_7d)
+            token = Token(name, symbol, price, price_btc, volume, balance, rank, pct_1h, pct_24h, pct_7d)
             tokens.append(token)
         return Portfolio(tokens)
 
 
 class Token(object):
-    def __init__(self, name, symbol, price, price_btc, balance, rank, pct_1h, pct_24h, pct_7d):
+    def __init__(self, name, symbol, price, price_btc, volume, balance, rank, pct_1h, pct_24h, pct_7d):
         self.name = name
         self.symbol = symbol
         self.name_str = '%s (%s)' % (name, symbol)
@@ -110,13 +127,14 @@ class Token(object):
         self.balance = balance
         self.value = price * balance
         self.value_btc = price_btc * balance
+        self.volume = volume
         self.rank = rank
         self.pct_1h = pct_1h
         self.pct_24h = pct_24h
         self.pct_7d = pct_7d
 
     def as_row(self):
-        return [self.rank, self.name_str, self.balance, self.price, self.value, self.pct_1h, self.pct_24h, self.pct_7d]
+        return [self.rank, self.name_str, self.balance, self.price, self.value, self.volume, self.pct_1h, self.pct_24h, self.pct_7d]
 
 
 class Portfolio(object):
@@ -131,7 +149,7 @@ class Portfolio(object):
 
 # Main application entry point
 def main():
-    sort_by = ['percents', 'value', 'price', 'amount', 'coin', 'rank', 'pct', 'pct_day', 'pct_week']
+    sort_by = ['percents', 'value', 'price', 'volume', 'amount', 'coin', 'rank', 'pct', 'pct_day', 'pct_week']
     parser = argparse.ArgumentParser()
     parser.add_argument('-s', '--sort-by', help="sort by: %s" % ', '.join(sorted(sort_by)), default='value')
     parser.add_argument('-r', '--reverse', help="reverse sort, by lowest value first", action='store_true', default=False)
