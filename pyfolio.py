@@ -125,7 +125,7 @@ def build_table(percents, currency, sort_by, decimals, reverse, portfolio):
 
         # remove amount/value from rows
         if percents:
-            del row[2]
+            del row[3]
             del row[4]
         table.add_row(row)
 
