@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-import requests
 import prettytable
 import sys
 import argparse
@@ -7,19 +6,21 @@ import json
 
 from common import api
 from common import model
+from common import stringformat
 
 def is_bitcoin(symbol):
     return symbol.lower() == 'btc'
 
 
-def build_table(currency, sort_by, decimals, reverse, tokens):
+def build_table(percents, currency, sort_by, decimals, reverse, portfolio):
     # table headers
     headers = {
         'rank': 'Rank #',
         'coin': 'Coin/token',
+        'price': 'Price (%s)' % currency,
         'amount': 'Amount',
-        'price': 'Price (%s)' % currency.upper(),
-        'value': 'Value (%s)' % currency.upper(),
+        'value': 'Value (%s)' % currency,
+        'volume': '24h vol',
         'pct': '% 1h',
         'pct_day': '% day',
         'pct_week': '% week',
@@ -33,15 +34,22 @@ def build_table(currency, sort_by, decimals, reverse, tokens):
         headers['amount'], 
         headers['price'],
         headers['value'], 
-        headers['pct'], 
+        headers['volume'], 
+        headers['pct'],
         headers['pct_day'], 
         headers['pct_week']
     ]
+    if percents:
+        table.field_names.remove(headers['value'])
+        sort_by = 'amount'
+    else:
+        table.align[headers['value']] = 'r'
+    
     table.align[headers['rank']]  = 'r'
     table.align[headers['coin']]  = 'l'
     table.align[headers['amount']]  = 'r'
     table.align[headers['price']] = 'r'
-    table.align[headers['value']] = 'r'
+    table.align[headers['volume']] = 'r'
     table.align[headers['pct']] = 'r'
     table.align[headers['pct_day']] = 'r'
     table.align[headers['pct_week']] = 'r'
@@ -50,44 +58,41 @@ def build_table(currency, sort_by, decimals, reverse, tokens):
     table.reversesort = not reverse
     
     # build table
-    def token_table_row(token):
-        if is_bitcoin(token.symbol):
-            return [ 
-                token.rank,
-                token.name_str,
-                token.balance,
-                token.price_btc,
-                token.value_btc,
-                token.percent_change_1h,
-                token.percent_change_24h,
-                token.percent_change_7d
-            ]
+    def token_table_row(token, percent = -1):
+        row = []
+        row.append(token.rank)
+        row.append(token.name_str)
+        if percent > 0:
+            row.append('{:.2f}%'.format(percent))
         else:
-            return [
-                token.rank,
-                token.name_str,
-                token.balance,
-                token.price,
-                token.value,
-                token.percent_change_1h,
-                token.percent_change_24h,
-                token.percent_change_7d
-            ]
-    for token in tokens:
-        table.add_row(token_table_row(token))
+            row.append(token.balance)
+            row.append(token.value)
+        row.append(token.price)
+        row.append(stringformat.large_number(token.volume_24h))
+        row.append(token.percent_change_1h)
+        row.append(token.percent_change_24h)
+        row.append(token.percent_change_7d)
+        return row
+
+    for token in portfolio.tokens:
+        if percents:
+            table.add_row(token_table_row(token, token.value * 100 / portfolio.value))
+        else:
+            table.add_row(token_table_row(token))
 
     return table
 
 
 # Main application entry point
 def main():
-    sort_by = ['value', 'price', 'amount', 'coin', 'rank', 'pct', 'pct_day', 'pct_week']
+    sort_by = ['percents', 'value', 'price', 'volume', 'amount', 'coin', 'rank', 'pct', 'pct_day', 'pct_week']
     parser = argparse.ArgumentParser()
-    parser.add_argument('-s', '--sort-by', help="Sort by: %s" % ', '.join(sorted(sort_by)), default='value')
-    parser.add_argument('-r', '--reverse', help="Reverse sort, by lowest value first", action='store_true', default=False)
-    parser.add_argument('-d', '--decimals', help="Decimals for USD values", default=2)
-    parser.add_argument('-c', '--currency', help="Currency to use (default: USD)", default='USD')
-    parser.add_argument('portfolio', help="Portfolio file (in JSON)", action='store', metavar='PORTFOLIO')
+    parser.add_argument('-s', '--sort-by', help="sort by: %s" % ', '.join(sorted(sort_by)), default='value')
+    parser.add_argument('-r', '--reverse', help="reverse sort, by lowest value first", action='store_true', default=False)
+    parser.add_argument('-p', '--percents', help="show percents only (hide values)", action='store_true', default=False)
+    parser.add_argument('-d', '--decimals', help="decimals for USD values", default=2)
+    parser.add_argument('-c', '--currency', help="currency to use (default: USD)", default='USD')
+    parser.add_argument('portfolio', help="portfolio file (in JSON)", action='store', metavar='PORTFOLIO')
     args = parser.parse_args()
 
     # Require portfolio file
@@ -106,10 +111,10 @@ def main():
     mcap = api.get_mcap()
 
     # Build the table
-    table = build_table(args.currency, args.sort_by, args.decimals, args.reverse, portfolio.tokens)
+    table = build_table(args.percents, args.currency, args.sort_by, args.decimals, args.reverse, portfolio)
 
-    # Print output    
-    print('Total mcap: $%d, 24h volume: %d' % (mcap.mcap_usd, mcap.volume_usd_24h))
+    # Print output
+    print('Total mcap: $%s, 24h volume: %s' % (stringformat.large_number(mcap.mcap_usd), stringformat.large_number(mcap.volume_usd_24h)))
     print(table)
     print('')
     if not is_bitcoin(args.currency):
