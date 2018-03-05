@@ -1,26 +1,15 @@
 #!/usr/bin/env python
-import requests
 import prettytable
 import sys
 import argparse
 import json
-import math
 
+from common import api
+from common import model
+from common import stringformat
 
-def is_bitcoin(token_id):
-    return token_id.lower() == 'btc'
-
-
-def large_number(n, short=False):
-    """ Return human readable large numbers. """
-    millnames = ['','k','m','bn','tn']
-    try:
-        n = float(n)
-        millidx = max(0,min(len(millnames)-1,
-        int(math.floor(0 if n == 0 else math.log10(abs(n))/3))))
-        return '{:.0f}{}'.format(n / 10**(3 * millidx), millnames[millidx])
-    except TypeError:
-        return '?'
+def is_bitcoin(symbol):
+    return symbol.lower() == 'btc'
 
 
 def build_table(percents, currency, sort_by, decimals, reverse, portfolio):
@@ -28,10 +17,9 @@ def build_table(percents, currency, sort_by, decimals, reverse, portfolio):
     headers = {
         'rank': 'Rank #',
         'coin': 'Coin/token',
-        'percents': 'Percents',
         'amount': 'Amount',
-        'price': 'Price (%s)' % currency.upper(),
-        'value': 'Value (%s)' % currency.upper(),
+        'price': 'Price ({})'.format(currency),
+        'value': 'Value ({})'.format(currency),
         'volume': '24h vol',
         'pct': '% 1h',
         'pct_day': '% day',
@@ -43,27 +31,23 @@ def build_table(percents, currency, sort_by, decimals, reverse, portfolio):
     table.field_names = [
         headers['rank'], 
         headers['coin'], 
-        headers['percents'], 
         headers['amount'], 
         headers['price'],
         headers['value'], 
         headers['volume'], 
-        headers['pct'], 
+        headers['pct'],
         headers['pct_day'], 
         headers['pct_week']
     ]
-
     if percents:
-        # remove amount and value
-        table.field_names.remove(headers['amount'])
         table.field_names.remove(headers['value'])
+        sort_by = 'amount'
     else:
-        table.align[headers['amount']]  = 'r'
         table.align[headers['value']] = 'r'
-
+    
     table.align[headers['rank']]  = 'r'
     table.align[headers['coin']]  = 'l'
-    table.align[headers['percents']]  = 'r'
+    table.align[headers['amount']]  = 'r'
     table.align[headers['price']] = 'r'
     table.align[headers['volume']] = 'r'
     table.align[headers['pct']] = 'r'
@@ -74,77 +58,29 @@ def build_table(percents, currency, sort_by, decimals, reverse, portfolio):
     table.reversesort = not reverse
     
     # build table
+    def token_table_row(token, percent = -1):
+        row = []
+        row.append(token.rank)
+        row.append(token.name_str)
+        if percent > 0:
+            row.append('{:.2f}%'.format(percent))
+        else:
+            row.append(token.balance)
+            row.append(token.value)
+        row.append(token.price)
+        row.append(stringformat.large_number(token.volume_24h))
+        row.append(stringformat.sh_color(token.percent_change_1h))
+        row.append(stringformat.sh_color(token.percent_change_24h))
+        row.append(stringformat.sh_color(token.percent_change_7d))
+        return row
+
     for token in portfolio.tokens:
-        row = token.as_row()
-
-        # add percents
-        row.insert(2, token.value * 100 / portfolio.value)
-
-        # remove amount/value from rows
         if percents:
-            del row[3]
-            del row[4]
-        table.add_row(row)
+            table.add_row(token_table_row(token, token.value * 100 / portfolio.value))
+        else:
+            table.add_row(token_table_row(token))
 
     return table
-
-
-class API(object):
-    endpoint_token = 'https://api.coinmarketcap.com/v1/ticker/%s/?convert=%s'
-    endpoint_mcap = 'https://api.coinmarketcap.com/v1/global/'
-
-    def get_mcap(self):
-        return requests.get(self.endpoint_mcap).json()['total_market_cap_usd']
-
-    def get_portfolio(self, portfolio_config, currency): 
-        tokens = []
-        # get stats for each coin
-        for item in portfolio_config:
-            name = item[0]
-            balance = item[1]
-            r_token = requests.get(self.endpoint_token % (name, currency)).json()[0]
-            name = r_token['name']
-            symbol = r_token['symbol']
-            rank = r_token['rank']
-            price = float(r_token['price_%s' % currency])
-            price_btc = float(r_token['price_btc'])
-            volume = large_number(float(r_token['24h_volume_usd']))
-            pct_1h = float(r_token['percent_change_1h'])
-            pct_24h = float(r_token['percent_change_24h'])
-            pct_7d = float(r_token['percent_change_7d'])
-            token = Token(name, symbol, price, price_btc, volume, balance, rank, pct_1h, pct_24h, pct_7d)
-            tokens.append(token)
-        return Portfolio(tokens)
-
-
-class Token(object):
-    def __init__(self, name, symbol, price, price_btc, volume, balance, rank, pct_1h, pct_24h, pct_7d):
-        self.name = name
-        self.symbol = symbol
-        self.name_str = '%s (%s)' % (name, symbol)
-        self.price = price
-        self.price_btc = price_btc
-        self.balance = balance
-        self.value = price * balance
-        self.value_btc = price_btc * balance
-        self.volume = volume
-        self.rank = rank
-        self.pct_1h = pct_1h
-        self.pct_24h = pct_24h
-        self.pct_7d = pct_7d
-
-    def as_row(self):
-        return [self.rank, self.name_str, self.balance, self.price, self.value, self.volume, self.pct_1h, self.pct_24h, self.pct_7d]
-
-
-class Portfolio(object):
-    def __init__(self, tokens):
-        self.tokens = tokens
-        self.value = 0
-        self.value_btc = 0
-        for token in tokens:
-            self.value += token.value
-            self.value_btc += token.value_btc
 
 
 # Main application entry point
@@ -168,25 +104,17 @@ def main():
     if is_bitcoin(args.currency):
         args.decimals = 8
 
-    # API
-    api = API()
-
     # Parse portfolio config, and fetch remote portfolio data
     with open(args.portfolio, 'r') as file:
         portfolio_config = json.load(file)
     portfolio = api.get_portfolio(portfolio_config, args.currency.lower())
-
-    # Replace default sort_by if -p/--percents
-    if args.sort_by == 'value' and args.percents:
-        args.sort_by = 'percents'
+    mcap = api.get_mcap()
 
     # Build the table
-    table = build_table(
-        args.percents, args.currency, args.sort_by, args.decimals, args.reverse, portfolio
-    )
+    table = build_table(args.percents, args.currency, args.sort_by, args.decimals, args.reverse, portfolio)
 
     # Print output
-    print('Total mcap: $%d' % api.get_mcap())
+    print('Total mcap: $%s, 24h volume: %s' % (stringformat.large_number(mcap.mcap_usd), stringformat.large_number(mcap.volume_usd_24h)))
     print(table)
     print('')
     if not is_bitcoin(args.currency):
