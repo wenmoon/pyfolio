@@ -4,9 +4,9 @@ import sys
 import argparse
 import json
 
-from common import api
-from common import model
-from common import stringformat
+from hodlcore import api
+from hodlcore import model
+from hodlcore import stringformat
 
 def is_bitcoin(symbol):
     return symbol.lower() == 'btc'
