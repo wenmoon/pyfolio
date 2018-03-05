@@ -17,9 +17,9 @@ def build_table(percents, currency, sort_by, decimals, reverse, portfolio):
     headers = {
         'rank': 'Rank #',
         'coin': 'Coin/token',
-        'price': 'Price (%s)' % currency,
         'amount': 'Amount',
-        'value': 'Value (%s)' % currency,
+        'price': 'Price ({})'.format(currency),
+        'value': 'Value ({})'.format(currency),
         'volume': '24h vol',
         'pct': '% 1h',
         'pct_day': '% day',
@@ -69,9 +69,9 @@ def build_table(percents, currency, sort_by, decimals, reverse, portfolio):
             row.append(token.value)
         row.append(token.price)
         row.append(stringformat.large_number(token.volume_24h))
-        row.append(token.percent_change_1h)
-        row.append(token.percent_change_24h)
-        row.append(token.percent_change_7d)
+        row.append(stringformat.sh_color(token.percent_change_1h))
+        row.append(stringformat.sh_color(token.percent_change_24h))
+        row.append(stringformat.sh_color(token.percent_change_7d))
         return row
 
     for token in portfolio.tokens:
